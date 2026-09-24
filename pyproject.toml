@@ -11,11 +11,17 @@ requires-python = ">=3.13"
 dependencies = [
     "duckdb>=1.1,<2",
     "exchange-calendars>=4.13,<5",
+    "joblib>=1.4,<2",
     "scikit-learn>=1.7,<2",
 ]
 
 [project.scripts]
 marketsignal = "marketsignal.cli:main"
+
+[project.optional-dependencies]
+tracking = [
+    "mlflow>=3,<4",
+]
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]

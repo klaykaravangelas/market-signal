@@ -5,6 +5,7 @@ import math
 import platform
 import shutil
 import statistics
+import time
 import warnings
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 import duckdb
 import exchange_calendars as xcals
+import joblib
 import numpy as np
 import sklearn
 from exchange_calendars.errors import CalendarError
@@ -270,24 +272,37 @@ def _scores(actual: np.ndarray, probabilities: np.ndarray) -> dict[str, float]:
     }
 
 
-def _probabilities(model: str, train: list[Example], validation: list[Example]) -> np.ndarray:
+def _fit_and_predict(
+    model: str, train: list[Example], validation: list[Example]
+) -> tuple[np.ndarray, object | None, dict[str, int] | None, float | None]:
     train_x = np.asarray([row.predictors for row in train], dtype=float)
     train_y = np.asarray([row.target for row in train], dtype=int)
     val_x = np.asarray([row.predictors for row in validation], dtype=float)
     if model == "always_positive":
-        return np.ones(len(validation))
+        return np.ones(len(validation)), None, None, None
     if model == "training_prevalence":
-        return np.full(len(validation), float(train_y.mean()))
+        return np.full(len(validation), float(train_y.mean())), None, None, None
     if model == "logistic_regression":
         estimator = make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=1000))
     else:
         estimator = RandomForestClassifier(
             n_estimators=200, min_samples_leaf=5, random_state=42, n_jobs=1
         )
+    fit_started = time.perf_counter()
     with warnings.catch_warnings():
         warnings.simplefilter("error", ConvergenceWarning)
         estimator.fit(train_x, train_y)
-    return estimator.predict_proba(val_x)[:, 1]
+    fit_seconds = time.perf_counter() - fit_started
+    diagnostics = (
+        {"iterations": int(estimator[-1].n_iter_[0])}
+        if model == "logistic_regression"
+        else {"tree_count": len(estimator.estimators_)}
+    )
+    return estimator.predict_proba(val_x)[:, 1], estimator, diagnostics, fit_seconds
+
+
+def _probabilities(model: str, train: list[Example], validation: list[Example]) -> np.ndarray:
+    return _fit_and_predict(model, train, validation)[0]
 
 
 def evaluate(data_dir: Path, tickers: list[str], first_validation_year: int, folds: int) -> Path:
@@ -305,6 +320,8 @@ def evaluate(data_dir: Path, tickers: list[str], first_validation_year: int, fol
     inputs: dict[str, object] = {}
     calendars: dict[str, str] = {}
     drop_counts: dict[str, dict[str, int]] = {}
+    fitted: dict[tuple[str, int, str], object] = {}
+    training_records: list[dict[str, object]] = []
     for ticker in tickers:
         examples, manifest, drops = _load_ticker(data_dir, ticker)
         calendars[ticker] = manifest["calendar"]["identifier"]
@@ -331,8 +348,12 @@ def evaluate(data_dir: Path, tickers: list[str], first_validation_year: int, fol
             fold_details.append(detail)
             actual = np.asarray([row.target for row in validation], dtype=int)
             for model in MODELS:
+                print(f"{ticker} {year} {model}: starting fit", flush=True)
+                started = time.perf_counter()
                 try:
-                    probabilities = _probabilities(model, train, validation)
+                    probabilities, estimator, diagnostics, fit_seconds = _fit_and_predict(
+                        model, train, validation
+                    )
                     if not np.all(np.isfinite(probabilities)) or np.any(
                         (probabilities < 0) | (probabilities > 1)
                     ):
@@ -342,6 +363,23 @@ def evaluate(data_dir: Path, tickers: list[str], first_validation_year: int, fol
                     raise EvaluationError(
                         f"{ticker} {year} {model}: model fit or scoring failed: {exc}"
                     ) from exc
+                elapsed = time.perf_counter() - started
+                print(f"{ticker} {year} {model}: complete in {elapsed:.3f}s", flush=True)
+                if estimator is not None:
+                    fitted[(ticker, year, model)] = estimator
+                training_records.append(
+                    {
+                        "ticker": ticker,
+                        "fold_year": year,
+                        "model": model,
+                        "parameters": PARAMETERS[model],
+                        "random_seed": 42 if model == "random_forest" else None,
+                        "training": detail["training"],
+                        "validation": detail["validation"],
+                        "fit_seconds": fit_seconds,
+                        "diagnostics": diagnostics,
+                    }
+                )
                 for row, probability in zip(validation, probabilities, strict=True):
                     predictions.append(
                         (
@@ -395,6 +433,17 @@ def evaluate(data_dir: Path, tickers: list[str], first_validation_year: int, fol
         _write_parquet(temporary / "predictions.parquet", PREDICTION_SCHEMA, predictions)
         _write_parquet(temporary / "fold_metrics.parquet", FOLD_SCHEMA, fold_metrics)
         _write_parquet(temporary / "leaderboard.parquet", LEADERBOARD_SCHEMA, leaderboard)
+        (temporary / "training_records.json").write_text(
+            json.dumps({"schema_version": 1, "records": training_records}, indent=2, sort_keys=True)
+            + "\n"
+        )
+        model_outputs = {}
+        for (ticker, year, model), estimator in fitted.items():
+            relative = f"models/{ticker}/{year}/{model}.joblib"
+            path = temporary / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            joblib.dump({"estimator": estimator, "features": list(FEATURES)}, path)
+            model_outputs[relative] = {"path": relative, "sha256": _sha256(path)}
         for ticker_inputs in inputs.values():
             for item in ticker_inputs:
                 if _sha256(data_dir / item["path"]) != item["sha256"]:
@@ -428,7 +477,15 @@ def evaluate(data_dir: Path, tickers: list[str], first_validation_year: int, fol
             "outputs": {
                 name: {"path": name, "sha256": _sha256(temporary / name)}
                 for name in ("predictions.parquet", "fold_metrics.parquet", "leaderboard.parquet")
-            },
+            }
+            | {
+                "training_records.json": {
+                    "path": "training_records.json",
+                    "sha256": _sha256(temporary / "training_records.json"),
+                    "schema_version": 1,
+                }
+            }
+            | model_outputs,
         }
         (temporary / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n"

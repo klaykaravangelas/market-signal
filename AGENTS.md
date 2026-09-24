@@ -53,7 +53,8 @@ marketsignal/
 │   ├── 002-feature-engineering.md
 │   ├── 003-model-training.md
 │   ├── 004-backtesting.md
-│   └── 005-aws-deployment.md
+│   ├── 005-local-experiment-tracking.md
+│   └── 006-aws-deployment.md
 │
 ├── src/
 │   └── marketsignal/

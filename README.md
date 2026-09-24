@@ -82,7 +82,7 @@ Ingest several years of prices and rebuild features before requesting full-year 
 uv run --no-editable marketsignal evaluate SPY QQQ --first-validation-year 2022 --folds 3
 ```
 
-The command checks feature, label, and source price hashes, then evaluates each ticker independently. Annual training windows expand forward while five-session labels crossing a fold boundary are excluded. It compares always-positive and training-prevalence baselines with logistic regression and a random forest. Each completed run is saved under `data/evaluations/<run-id>/` with `predictions.parquet`, `fold_metrics.parquet`, `leaderboard.parquet`, and `manifest.json`. The manifest includes input/output hashes, fold counts and ranges, dropped-row counts, parameters, and software versions. Use `--data-dir /path/to/data` for another local dataset.
+The command checks feature, label, and source price hashes, then evaluates each ticker independently. Annual training windows expand forward while five-session labels crossing a fold boundary are excluded. It compares always-positive and training-prevalence baselines with logistic regression and a random forest. Each completed run is saved under `data/evaluations/<run-id>/` with `predictions.parquet`, `fold_metrics.parquet`, `leaderboard.parquet`, `training_records.json`, fitted models under `models/`, and `manifest.json`. The manifest includes input/output hashes, fold counts and ranges, dropped-row counts, parameters, and software versions. The CLI prints a start/completion line and fit time for each candidate; the scikit-learn models do not have an epoch-by-epoch loss curve. Use `--data-dir /path/to/data` for another local dataset.
 
 Query a completed run directly with DuckDB:
 
@@ -111,6 +111,25 @@ uv run --no-editable python -c "import duckdb; print(duckdb.sql(\"SELECT ticker,
 ```
 
 Adjusted closes are a historical return proxy, not guaranteed execution prices. The data may contain later provider corrections, and this backtest does not include market impact, taxes, or cash interest. Results from these same validation years should not be used as proof of future performance. [Spec 004](specs/004-backtesting.md) defines the timing, cost arithmetic, and limitations.
+
+## Track saved runs with MLflow
+
+Install the optional tracking dependencies, then import an evaluation and its linked backtest by run ID:
+
+```sh
+uv sync --dev --extra tracking --no-editable
+uv run --extra tracking --no-editable marketsignal track <evaluation-run-id> --backtest-run-id <backtest-run-id>
+```
+
+Use `--data-dir /path/to/data` when the runs live elsewhere. The command verifies the saved manifests, output hashes, schemas, and evaluation/backtest link; it does not fetch data or refit models. It prints the MLflow run IDs and the exact local UI command. By default, the tracking backend is `data/mlflow/tracking.db` and artifacts are in `data/mlflow/artifacts/`. `--tracking-uri` and `--artifact-root` allow explicit local overrides. A running server is unnecessary for import. To browse the default store from the repository root:
+
+```sh
+uv run --extra tracking mlflow server --backend-store-uri "sqlite:///$(pwd)/data/mlflow/tracking.db" --default-artifact-root "file://$(pwd)/data/mlflow/artifacts" --host 127.0.0.1 --port 5000
+```
+
+Open `http://127.0.0.1:5000`. Keep this research UI bound to localhost; a public service would need authentication and access controls. Evaluation and backtest metrics live in separate experiments with nested runs for each ticker, year, and candidate or strategy. Evaluation parents record ordered features and source hashes; backtest parents link to the exact evaluation ID and manifest hash. Importing a completed run again returns the same MLflow run ID. Failed MLflow attempts remain visible as failed and can be retried; the saved Parquet runs are not modified. This local workflow assumes one tracking writer at a time.
+
+Evaluations created before Spec 005 import with `results_only=true`: their metrics are available, but their fitted estimators and fit times were never saved. New evaluations store trusted local `joblib` model files. Loading Python model files from an untrusted source can execute code; only load artifacts from runs you created or otherwise trust. MLflow indexes the saved results, while the immutable Parquet files and manifests remain the authoritative data. Each annual fold is a separate fit, so the UI's fold order is not a live training-progress curve. [Spec 005](specs/005-local-experiment-tracking.md) defines the tracking contract.
 
 ## Checks
 

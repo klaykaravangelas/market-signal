@@ -254,16 +254,16 @@ def test_model_failure_does_not_publish(tmp_path: Path, monkeypatch: pytest.Monk
     fixture_data(tmp_path)
     from marketsignal import evaluation
 
-    original = evaluation._probabilities
+    original = evaluation._fit_and_predict
 
     def fail_random_forest(
         model: str, train: list[Example], validation: list[Example]
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, object | None, dict[str, int] | None, float | None]:
         if model == "random_forest":
             raise ValueError("synthetic fit failure")
         return original(model, train, validation)
 
-    monkeypatch.setattr(evaluation, "_probabilities", fail_random_forest)
+    monkeypatch.setattr(evaluation, "_fit_and_predict", fail_random_forest)
     with pytest.raises(EvaluationError, match="SPY 2022 random_forest.*synthetic fit failure"):
         evaluate(tmp_path, ["SPY"], 2022, 1)
     assert not (tmp_path / "evaluations").exists()

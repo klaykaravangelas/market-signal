@@ -14,6 +14,7 @@ from marketsignal.features import FeatureDataError, build_features
 from marketsignal.ingestion import ingest, normalize_tickers, replay, validate_range
 from marketsignal.prices import PriceDataError
 from marketsignal.tiingo import TiingoProvider
+from marketsignal.tracking import TrackingError, track
 
 
 def _date(value: str) -> date:
@@ -50,8 +51,33 @@ def main(argv: list[str] | None = None) -> int:
     backtest_command.add_argument("--data-dir", type=Path, default=Path("data"))
     backtest_command.add_argument("--fee-bps", type=float, default=1.0)
     backtest_command.add_argument("--slippage-bps", type=float, default=5.0)
+    tracking_command = subcommands.add_parser("track", help="Import saved runs into local MLflow")
+    tracking_command.add_argument("evaluation_run_id", help="Directory name under data/evaluations")
+    tracking_command.add_argument("--backtest-run-id", help="Directory name under data/backtests")
+    tracking_command.add_argument("--data-dir", type=Path, default=Path("data"))
+    tracking_command.add_argument("--tracking-uri", help="Override the MLflow backend URI")
+    tracking_command.add_argument(
+        "--artifact-root", type=Path, help="Override local MLflow artifacts"
+    )
     args = parser.parse_args(argv)
     try:
+        if args.command == "track":
+            evaluation_id, backtest_id, uri, artifacts = track(
+                args.data_dir,
+                args.evaluation_run_id,
+                args.backtest_run_id,
+                args.tracking_uri,
+                args.artifact_root,
+            )
+            print(f"Evaluation MLflow run: {evaluation_id}")
+            if backtest_id:
+                print(f"Backtest MLflow run: {backtest_id}")
+            print(
+                "Local UI: uv run --extra tracking mlflow server "
+                f"--backend-store-uri {uri} --default-artifact-root {artifacts} "
+                "--host 127.0.0.1 --port 5000"
+            )
+            return 0
         if args.command == "backtest":
             output = backtest(
                 args.data_dir, args.evaluation_run_id, args.fee_bps, args.slippage_bps
@@ -105,7 +131,15 @@ def main(argv: list[str] | None = None) -> int:
         output, rows = replay(provider, args.capture_dir, args.data_dir)
         print(f"Replayed {len(rows)} rows -> {output}")
         return 0
-    except (OSError, KeyError, ValueError, PriceDataError, EvaluationError, BacktestError) as exc:
+    except (
+        OSError,
+        KeyError,
+        ValueError,
+        PriceDataError,
+        EvaluationError,
+        BacktestError,
+        TrackingError,
+    ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

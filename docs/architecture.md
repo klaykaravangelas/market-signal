@@ -110,7 +110,7 @@ Local annual expanding-fold evaluation
 Predictions + fold metrics + leaderboard + hashed manifest
 ```
 
-The current `marketsignal evaluate` command fits four independent candidates per ticker and year, using only complete rows and training labels that end before validation starts. It saves one immutable local run under `data/evaluations/` after every requested fold succeeds. MLflow tracking and model artifacts are later work.
+The current `marketsignal evaluate` command fits four independent candidates per ticker and year, using only complete rows and training labels that end before validation starts. It saves one immutable local run under `data/evaluations/` after every requested fold succeeds, including fitted logistic-regression and random-forest models, fold diagnostics, and hashes. The separate `marketsignal track` command verifies saved evaluation and optional backtest runs before importing them into local MLflow. This keeps the Parquet and manifest outputs authoritative even if tracking fails.
 
 `marketsignal backtest` consumes a saved evaluation and its exact source price snapshot. It applies next-session-close execution, explicit costs, and a daily long-or-cash rule, then stores interval returns and fold summaries under `data/backtests/`. This research simulation uses adjusted closes as a return proxy; it does not establish executable historical fills.
 
@@ -177,6 +177,9 @@ data/
 ├── labels/
 ├── evaluations/
 ├── backtests/
+├── mlflow/
+│   ├── tracking.db
+│   └── artifacts/
 └── predictions/
 ```
 
@@ -359,7 +362,7 @@ Walk-forward evaluation should eventually become a reusable component of the pla
 
 # Experiment Tracking
 
-MLflow should be used for model experiment tracking.
+MLflow is available through the optional `tracking` extra. Local imports use a SQLite backend and filesystem artifacts under the selected data directory, without a tracking server. [ADR 002](adr/002-local-mlflow-tracking.md) records why tracking is separate from evaluation and backtesting.
 
 Each experiment should record:
 

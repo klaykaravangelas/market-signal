@@ -2,7 +2,7 @@
 
 ## Status
 
-Active roadmap. Phases 1–3 are implemented and verified with local SPY/QQQ data; Phase 1 also has live Tiingo verification. Spec 004 adds local backtesting of the saved Phase 3 evaluation. MLOps and later roadmap phases remain planned.
+Active roadmap. Phases 1–4 are implemented and verified locally; Phase 1 also has live Tiingo verification. Spec 004 adds local backtesting of the saved Phase 3 evaluation. [Spec 005](005-local-experiment-tracking.md) implements the local MLOps phase; later phases remain planned.
 
 ---
 
