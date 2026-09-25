@@ -1,6 +1,6 @@
 # MarketSignal
 
-MarketSignal is a local-first market data and forecasting project. Its first implemented phase ingests historical daily prices, retains the provider response, and stores normalized Parquet files for DuckDB queries. See [Spec 001](specs/001-market-data-ingestion.md) and the [architecture](docs/architecture.md).
+MarketSignal is a local-first market data and forecasting project. It ingests historical daily prices, builds features, evaluates direction models, backtests saved predictions, tracks experiments in local MLflow, and produces diagnostic reports that explain saved predictions. AWS deployment is deferred and optional. See the [project roadmap](specs/000-project-overview.md) and [architecture](docs/architecture.md).
 
 ## Set up
 
@@ -130,6 +130,33 @@ uv run --extra tracking mlflow server --backend-store-uri "sqlite:///$(pwd)/data
 Open `http://127.0.0.1:5000`. Keep this research UI bound to localhost; a public service would need authentication and access controls. Evaluation and backtest metrics live in separate experiments with nested runs for each ticker, year, and candidate or strategy. Evaluation parents record ordered features and source hashes; backtest parents link to the exact evaluation ID and manifest hash. Importing a completed run again returns the same MLflow run ID. Failed MLflow attempts remain visible as failed and can be retried; the saved Parquet runs are not modified. This local workflow assumes one tracking writer at a time.
 
 Evaluations created before Spec 005 import with `results_only=true`: their metrics are available, but their fitted estimators and fit times were never saved. New evaluations store trusted local `joblib` model files. Loading Python model files from an untrusted source can execute code; only load artifacts from runs you created or otherwise trust. MLflow indexes the saved results, while the immutable Parquet files and manifests remain the authoritative data. Each annual fold is a separate fit, so the UI's fold order is not a live training-progress curve. [Spec 005](specs/005-local-experiment-tracking.md) defines the tracking contract.
+
+## Diagnose saved predictions
+
+Use a saved evaluation ID to build a self-contained report without fetching prices or retraining. Add a linked backtest ID to show trading results in a separate section:
+
+```sh
+uv run --no-editable marketsignal diagnose <evaluation-run-id> --backtest-run-id <backtest-run-id>
+```
+
+Omit `--backtest-run-id` for predictive diagnostics alone. Use `--data-dir /path/to/data` if the saved runs are elsewhere. The command prints a new diagnostic run ID and the path to `data/diagnostics/<diagnostic-run-id>/report.html`; open that HTML file in a browser. The same directory contains queryable `fold_diagnostics.parquet` and `calibration_bins.parquet`, plus `trading_context.parquet` when a backtest was supplied. Its manifest hashes every output and links the exact source runs.
+
+The report shows each ticker and validation year separately. “Positive” means adjusted close higher five exchange sessions later; the fixed `0.5` threshold turns a probability into a positive or non-positive prediction. Check the actual and predicted positive rates first, then the confusion counts. An all-positive model can match a rising market's class balance without identifying which dates will rise. Compare accuracy and ROC-AUC deltas with both simple baselines; positive deltas are improvements. For Brier score, lower is better, so the report's **Brier improvement** is baseline Brier minus model Brier. Reliability diagrams show predicted versus observed positive rates; bins with fewer than 20 rows are flagged as sparse. Trading returns use a separate next-session long-or-cash simulation and should not be read as classification accuracy.
+
+To query a diagnostic fold directly:
+
+```sh
+uv run --no-editable python -c "import duckdb; print(duckdb.sql(\"SELECT ticker, fold_year, model, validation_rows, predicted_positive_rate, accuracy, brier_score FROM read_parquet('data/diagnostics/<diagnostic-run-id>/fold_diagnostics.parquet') ORDER BY ticker, fold_year, model\").fetchall())"
+```
+
+To see the report in local MLflow, import it after installing the `tracking` extra. This creates a `marketsignal-diagnostics` experiment with the HTML report and tables as artifacts; it does not alter the saved evaluation or backtest:
+
+```sh
+uv sync --dev --extra tracking --no-editable
+uv run --extra tracking --no-editable marketsignal track-diagnostics <diagnostic-run-id>
+```
+
+Use the same local MLflow server command shown above to browse the experiment. Reimporting an already completed diagnostic run returns its existing MLflow run ID. [Spec 006](specs/006-model-diagnostics.md) defines the validation rules and interpretation limits.
 
 ## Checks
 

@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from marketsignal.backtesting import BacktestError, backtest
+from marketsignal.diagnostics import DiagnosticsError, diagnose, track_diagnostics
 from marketsignal.evaluation import EvaluationError, evaluate
 from marketsignal.features import FeatureDataError, build_features
 from marketsignal.ingestion import ingest, normalize_tickers, replay, validate_range
@@ -51,6 +52,14 @@ def main(argv: list[str] | None = None) -> int:
     backtest_command.add_argument("--data-dir", type=Path, default=Path("data"))
     backtest_command.add_argument("--fee-bps", type=float, default=1.0)
     backtest_command.add_argument("--slippage-bps", type=float, default=5.0)
+    diagnostics_command = subcommands.add_parser("diagnose", help="Explain saved model predictions")
+    diagnostics_command.add_argument(
+        "evaluation_run_id", help="Directory name under data/evaluations"
+    )
+    diagnostics_command.add_argument(
+        "--backtest-run-id", help="Directory name under data/backtests"
+    )
+    diagnostics_command.add_argument("--data-dir", type=Path, default=Path("data"))
     tracking_command = subcommands.add_parser("track", help="Import saved runs into local MLflow")
     tracking_command.add_argument("evaluation_run_id", help="Directory name under data/evaluations")
     tracking_command.add_argument("--backtest-run-id", help="Directory name under data/backtests")
@@ -59,8 +68,33 @@ def main(argv: list[str] | None = None) -> int:
     tracking_command.add_argument(
         "--artifact-root", type=Path, help="Override local MLflow artifacts"
     )
+    diagnostics_tracking = subcommands.add_parser(
+        "track-diagnostics", help="Import a saved diagnostic report into local MLflow"
+    )
+    diagnostics_tracking.add_argument("diagnostic_run_id", help="Directory under data/diagnostics")
+    diagnostics_tracking.add_argument("--data-dir", type=Path, default=Path("data"))
+    diagnostics_tracking.add_argument("--tracking-uri", help="Override the MLflow backend URI")
+    diagnostics_tracking.add_argument(
+        "--artifact-root", type=Path, help="Override local MLflow artifacts"
+    )
     args = parser.parse_args(argv)
     try:
+        if args.command == "track-diagnostics":
+            run_id, uri, artifacts = track_diagnostics(
+                args.data_dir, args.diagnostic_run_id, args.tracking_uri, args.artifact_root
+            )
+            print(f"Diagnostic MLflow run: {run_id}")
+            print(
+                "Local UI: uv run --extra tracking mlflow server "
+                f"--backend-store-uri {uri} --default-artifact-root {artifacts} "
+                "--host 127.0.0.1 --port 5000"
+            )
+            return 0
+        if args.command == "diagnose":
+            output = diagnose(args.data_dir, args.evaluation_run_id, args.backtest_run_id)
+            print(f"Diagnostic run: {output.name}")
+            print(f"Report: {output / 'report.html'}")
+            return 0
         if args.command == "track":
             evaluation_id, backtest_id, uri, artifacts = track(
                 args.data_dir,
@@ -138,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         PriceDataError,
         EvaluationError,
         BacktestError,
+        DiagnosticsError,
         TrackingError,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)

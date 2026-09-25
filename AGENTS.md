@@ -5,14 +5,13 @@
 MarketSignal is an open-source market forecasting and intelligence platform that combines:
 
 - Platform engineering
-- AWS
-- Infrastructure as Code
+- optional AWS and Infrastructure as Code work when justified
 - Machine learning
 - MLOps
 - Financial market data
 - AI/LLM-based research workflows
 
-The project should be built incrementally, with each major feature defined by a specification before implementation.
+The project should be built incrementally, with each major feature defined by a specification before implementation. Local development is the priority; AWS deployment is deferred and optional unless a later specification identifies a clear need.
 
 The goal is not to claim that the system can reliably beat the market. The goal is to build a production-style ML platform that demonstrates sound software engineering, platform engineering, and ML engineering practices.
 
@@ -54,14 +53,14 @@ marketsignal/
 │   ├── 003-model-training.md
 │   ├── 004-backtesting.md
 │   ├── 005-local-experiment-tracking.md
-│   └── 006-aws-deployment.md
+│   └── 006-model-diagnostics.md
 │
 ├── src/
 │   └── marketsignal/
 │
 ├── tests/
 │
-└── infrastructure/
+└── infrastructure/             # optional future cloud work
     └── terraform/
 ```
 
@@ -107,7 +106,7 @@ Potential supporting libraries:
 - Reproducible training runs
 - Explicit recording of features, parameters, metrics, and model artifacts
 
-### Infrastructure
+### Optional Cloud Infrastructure
 
 - Terraform
 - AWS
@@ -123,7 +122,7 @@ Prefer serverless or very low-cost AWS services where practical.
 - GitHub Actions
 - Automated testing
 - Linting
-- Terraform validation
+- Terraform validation if cloud infrastructure is introduced
 - Security scanning where practical
 
 ---
@@ -268,7 +267,7 @@ A strong result should not be presented as evidence that future returns are guar
 
 ## AWS Guidelines
 
-AWS is part of the project's platform engineering demonstration, but the system should not use AWS services simply for architectural complexity.
+AWS deployment is deferred. If it later becomes part of the project, do not add AWS services simply for architectural complexity.
 
 Prefer:
 

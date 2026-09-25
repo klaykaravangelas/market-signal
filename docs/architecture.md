@@ -24,8 +24,8 @@ The platform should demonstrate:
 - model evaluation
 - backtesting
 - experiment tracking
-- AWS infrastructure
-- Infrastructure as Code
+- optional AWS infrastructure when justified
+- Infrastructure as Code for any cloud deployment
 - automated testing
 - CI/CD
 - observability
@@ -45,21 +45,21 @@ The project should prioritize correctness, reproducibility, and maintainability 
                            │
                            ▼
                   Raw Market Dataset
-                     S3 / Parquet
+                  Local Parquet
                            │
                            ▼
                  Normalization Pipeline
                            │
                            ▼
                 Processed Market Dataset
-                     S3 / Parquet
+                  Local Parquet
                            │
                            ▼
                   Feature Engineering
                            │
                            ▼
                Feature + Label Datasets
-                     S3 / Parquet
+                  Local Parquet
                            │
                 ┌──────────┴───────────┐
                 │                      │
@@ -112,6 +112,8 @@ Predictions + fold metrics + leaderboard + hashed manifest
 
 The current `marketsignal evaluate` command fits four independent candidates per ticker and year, using only complete rows and training labels that end before validation starts. It saves one immutable local run under `data/evaluations/` after every requested fold succeeds, including fitted logistic-regression and random-forest models, fold diagnostics, and hashes. The separate `marketsignal track` command verifies saved evaluation and optional backtest runs before importing them into local MLflow. This keeps the Parquet and manifest outputs authoritative even if tracking fails.
 
+`marketsignal diagnose` verifies a saved evaluation and optional matching backtest, then writes a hashed, portable report and Parquet diagnostics under `data/diagnostics/`. The separate `marketsignal track-diagnostics` command can import that report into local MLflow without changing the authoritative saved files. [Spec 006](../specs/006-model-diagnostics.md) defines the diagnostic calculations and validation contract.
+
 `marketsignal backtest` consumes a saved evaluation and its exact source price snapshot. It applies next-session-close execution, explicit costs, and a daily long-or-cash rule, then stores interval returns and fold summaries under `data/backtests/`. This research simulation uses adjusted closes as a return proxy; it does not establish executable historical fills.
 
 DuckDB should be able to query Parquet datasets directly.
@@ -120,9 +122,9 @@ This provides a lightweight local environment without requiring a traditional da
 
 ---
 
-# Cloud Architecture
+# Optional Cloud Architecture (Deferred)
 
-The initial AWS architecture should use low-cost managed services.
+AWS deployment is deferred. The following is a possible future design, to be reconsidered only if a concrete need justifies its cost and complexity. Any future deployment should use low-cost managed services.
 
 ```text
                  EventBridge
@@ -177,6 +179,7 @@ data/
 ├── labels/
 ├── evaluations/
 ├── backtests/
+├── diagnostics/
 ├── mlflow/
 │   ├── tracking.db
 │   └── artifacts/
@@ -486,7 +489,7 @@ This creates a clear separation between:
 
 # Infrastructure as Code
 
-All AWS infrastructure must be provisioned through Terraform.
+If AWS infrastructure is introduced, provision it through Terraform.
 
 Potential modules:
 
@@ -516,8 +519,8 @@ Pull Request
     ├── Python tests
     ├── Ruff
     ├── Type checks
-    ├── Terraform fmt
-    ├── Terraform validate
+    ├── Terraform fmt (if cloud infrastructure is introduced)
+    ├── Terraform validate (if cloud infrastructure is introduced)
     └── Security checks
 ```
 
@@ -566,36 +569,38 @@ The project should demonstrate thoughtful cloud engineering rather than maximum 
 
 # Architecture Evolution
 
-The expected progression is:
+The local-first progression is:
 
 ```text
 Phase 1
-Local ML pipeline
+Local data and feature pipelines
 
         ↓
 
 Phase 2
-AWS ingestion + S3 data lake
+Chronological model evaluation and backtesting
 
         ↓
 
 Phase 3
-Automated training + MLflow
+Local MLflow tracking
 
         ↓
 
 Phase 4
-Prediction API
+Model diagnostics report
 
         ↓
 
 Phase 5
-AI research agent
+Prediction API
 
         ↓
 
 Phase 6
-Observability + automated agent workflows
+AI research agent and observability
 ```
 
 Each phase should leave the system usable and testable.
+
+AWS deployment is an optional future branch, not a prerequisite for the local phases.

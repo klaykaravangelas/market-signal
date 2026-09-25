@@ -2,7 +2,7 @@
 
 ## Status
 
-Active roadmap. Phases 1–4 are implemented and verified locally; Phase 1 also has live Tiingo verification. Spec 004 adds local backtesting of the saved Phase 3 evaluation. [Spec 005](005-local-experiment-tracking.md) implements the local MLOps phase; later phases remain planned.
+Active roadmap. The local data, feature, evaluation, backtesting, experiment-tracking, and [model-diagnostics](006-model-diagnostics.md) specs are implemented and verified locally. AWS deployment is deferred and optional.
 
 ---
 
@@ -13,8 +13,6 @@ Build an open-source, production-style financial market forecasting and intellig
 MarketSignal should demonstrate practical experience across:
 
 - platform engineering
-- AWS
-- Terraform
 - Python
 - financial data pipelines
 - machine learning
@@ -23,6 +21,8 @@ MarketSignal should demonstrate practical experience across:
 - observability
 - CI/CD
 - AI and agentic workflows
+
+Cloud infrastructure may be explored later if it adds enough value to justify its cost and complexity.
 
 The project is intended primarily as a technical portfolio and learning project.
 
@@ -221,7 +221,7 @@ Parquet
 DuckDB
 ```
 
-Cloud development:
+Optional future cloud development:
 
 ```text
 Amazon S3
@@ -229,7 +229,7 @@ Amazon S3
 Parquet
 ```
 
-The same logical dataset structure should work in both environments where practical.
+If cloud storage is introduced, keep the same logical dataset structure where practical.
 
 ---
 
@@ -274,13 +274,11 @@ Each model run should eventually capture:
 
 ---
 
-# AWS Scope
+# Optional Cloud Scope (Deferred)
 
-The first iteration should work entirely locally.
+The platform should remain usable entirely locally. AWS is not required for the current roadmap and should be reconsidered only when a concrete use case justifies its ongoing cost and operational work.
 
-AWS should be added incrementally.
-
-Expected cloud architecture:
+One possible future cloud architecture is:
 
 ```text
 EventBridge
@@ -295,7 +293,7 @@ S3 Data Lake
 Feature / Training Pipeline
 ```
 
-Infrastructure must be defined using Terraform.
+If AWS deployment is introduced, define its infrastructure using Terraform.
 
 The architecture should favor serverless and low-cost services.
 
@@ -453,10 +451,11 @@ Deliverables:
 
 ---
 
-## Phase 4 — MLOps
+## Phase 4 — Backtesting and MLOps
 
 Introduce:
 
+- local backtesting from saved evaluations
 - MLflow
 - experiment tracking
 - model artifacts
@@ -464,16 +463,15 @@ Introduce:
 
 ---
 
-## Phase 5 — AWS Deployment
+## Phase 5 — Model Diagnostics
 
 Introduce:
 
-- Terraform
-- S3
-- EventBridge
-- Lambda-based ingestion
-- CloudWatch
-- budget protection
+- inspection of saved out-of-sample predictions
+- class-balance and confusion-matrix diagnostics
+- probability-distribution and calibration views
+- baseline comparisons
+- a portable local report and optional MLflow artifact
 
 ---
 
@@ -501,6 +499,12 @@ Introduce:
 
 ---
 
+## Optional Future Phase — AWS Deployment
+
+Reconsider a small AWS deployment only if a specific product or learning goal warrants its cost. Define its scope in a separate spec before implementation. If pursued, use Terraform, cost controls, and the fewest services needed.
+
+---
+
 # Success Criteria
 
 The project should ultimately demonstrate that:
@@ -511,9 +515,9 @@ The project should ultimately demonstrate that:
 4. Models use time-aware validation.
 5. Models are compared with meaningful baselines.
 6. Experiments are reproducible.
-7. Infrastructure is automated with Terraform.
-8. AWS workloads can run at low cost.
-9. CI/CD validates code and infrastructure.
+7. Saved model predictions can be interpreted through local diagnostics and baseline comparisons.
+8. The core workflow runs locally without cloud credentials or ongoing cloud costs.
+9. CI/CD validates the code; any future cloud infrastructure is validated if introduced.
 10. The system can evolve into an agentic market intelligence platform without requiring a major redesign.
 
 ---
